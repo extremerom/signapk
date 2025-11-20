@@ -69,20 +69,29 @@ java -jar signapk-all.jar --min-sdk-version 21 publickey.x509.pem privatekey.pk8
 
 When running in Termux on ARM64 devices:
 
-1. **Native library location**: The tool tries to extract native libraries to `~/.conscrypt-native` first (which works better in Termux than `/tmp`)
+1. **Automatic Termux Detection**: The tool automatically detects when running in Termux and configures appropriate directories
 
-2. **Expected behavior**: 
+2. **Temporary Directory Configuration**: 
+   - Automatically uses `$TMPDIR` if set (Termux standard)
+   - Falls back to `$HOME/tmp` if needed
+   - Never tries to write to `/` (root) which would cause permission errors
+   - Creates `$HOME/tmp` if it doesn't exist
+
+3. **Native library location**: The tool tries to extract native libraries to `~/.conscrypt-native` first (which works better in Termux than `/tmp`)
+
+4. **Expected behavior**: 
    - If Conscrypt loads successfully, you'll see: `Successfully loaded Conscrypt native library for aarch64`
    - If it fails, you'll see warnings but the tool will continue using Bouncy Castle
+   - In Termux, you'll see: `Configured temp directory for Termux: /data/data/com.termux/files/home/tmp`
 
-3. **Signing JAR files**: When signing framework.jar or other JAR files, the tool will show:
+5. **Signing JAR files**: When signing framework.jar or other JAR files, the tool will show:
    ```
    Warning: Cannot detect minSdkVersion from input file: No AndroidManifest.xml in APK
    Defaulting to minSdkVersion=24. Use --min-sdk-version to override if needed.
    ```
    This is normal and expected - the signing will proceed successfully.
 
-4. **Performance**: Even if Conscrypt native library fails to load, Bouncy Castle provides all necessary cryptographic operations. The application will work correctly, just potentially slightly slower.
+6. **Performance**: Even if Conscrypt native library fails to load, Bouncy Castle provides all necessary cryptographic operations. The application will work correctly, just potentially slightly slower.
 
 ## Testing
 
@@ -99,11 +108,26 @@ The tests verify that:
 
 ## Troubleshooting
 
+### "Permission denied" when creating temporary files
+
+The tool now automatically detects Termux and configures the appropriate temporary directory. It will:
+1. Check for `$TMPDIR` environment variable
+2. Use `$HOME/tmp` if needed
+3. Create the directory if it doesn't exist
+4. Never try to write to `/` (root directory)
+
+If you still see permission errors, manually set the temp directory:
+```bash
+export TMPDIR=$HOME/tmp
+mkdir -p $TMPDIR
+java -jar signapk-all.jar ...
+```
+
 ### "Cannot create temporary directory for native library"
 
 If you see this error, the tool will try multiple locations:
 1. `~/.conscrypt-native` (preferred for Termux)
-2. System temp directory
+2. System temp directory (configured as above)
 3. `.conscrypt-native` in current directory
 
 Make sure at least one of these locations is writable.

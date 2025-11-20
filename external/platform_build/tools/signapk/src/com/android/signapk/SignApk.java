@@ -1071,8 +1071,85 @@ class SignApk {
         System.exit(2);
     }
 
+    /**
+     * Configures the Java temporary directory to be compatible with Termux and other
+     * restricted environments where /tmp might not be writable.
+     * 
+     * This method checks for TMPDIR environment variable (common in Termux) and
+     * falls back to $HOME/tmp if needed.
+     */
+    private static void configureTermuxTempDirectory() {
+        String currentTmpDir = System.getProperty("java.io.tmpdir");
+        
+        // Check if we're likely in Termux (check for TERMUX_VERSION or PREFIX env var)
+        String termuxVersion = System.getenv("TERMUX_VERSION");
+        String termuxPrefix = System.getenv("PREFIX");
+        boolean isTermux = (termuxVersion != null) || 
+                          (termuxPrefix != null && termuxPrefix.contains("com.termux"));
+        
+        // In Termux or if current tmpdir is not writable, try to use a better location
+        File tmpDir = new File(currentTmpDir);
+        boolean needsAlternative = false;
+        
+        if (!tmpDir.exists() || !tmpDir.canWrite()) {
+            needsAlternative = true;
+        } else if (isTermux && currentTmpDir.equals("/tmp")) {
+            // In Termux, prefer $HOME/tmp over /tmp even if /tmp exists
+            needsAlternative = true;
+        }
+        
+        if (needsAlternative) {
+            // Try TMPDIR environment variable first (Termux sets this)
+            String tmpDirEnv = System.getenv("TMPDIR");
+            if (tmpDirEnv != null && !tmpDirEnv.isEmpty()) {
+                File envTmpDir = new File(tmpDirEnv);
+                if (envTmpDir.exists() && envTmpDir.canWrite()) {
+                    System.setProperty("java.io.tmpdir", tmpDirEnv);
+                    return;
+                }
+            }
+            
+            // Fall back to $HOME/tmp
+            String userHome = System.getProperty("user.home");
+            if (userHome != null) {
+                File homeTmpDir = new File(userHome, "tmp");
+                
+                // Create the directory if it doesn't exist
+                if (!homeTmpDir.exists()) {
+                    homeTmpDir.mkdirs();
+                }
+                
+                if (homeTmpDir.exists() && homeTmpDir.canWrite()) {
+                    System.setProperty("java.io.tmpdir", homeTmpDir.getAbsolutePath());
+                    if (isTermux) {
+                        System.out.println("Configured temp directory for Termux: " + 
+                                         homeTmpDir.getAbsolutePath());
+                    }
+                    return;
+                }
+            }
+            
+            // Last resort: try current directory
+            File currentDirTmp = new File(".", "tmp");
+            if (!currentDirTmp.exists()) {
+                currentDirTmp.mkdirs();
+            }
+            if (currentDirTmp.exists() && currentDirTmp.canWrite()) {
+                try {
+                    System.setProperty("java.io.tmpdir", currentDirTmp.getCanonicalPath());
+                } catch (IOException e) {
+                    System.setProperty("java.io.tmpdir", currentDirTmp.getAbsolutePath());
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) {
         if (args.length < 4) usage();
+
+        // Configure Java temp directory for Termux compatibility
+        // In Termux, /tmp might not be writable, so use $HOME/tmp or $TMPDIR
+        configureTermuxTempDirectory();
 
         // Load Conscrypt native library for the current platform (ARM64, x86_64, etc.)
         // This is needed when using conscrypt-android in non-Android environments
