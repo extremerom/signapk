@@ -52,6 +52,10 @@ dependencies {
     implementation(files(layout.buildDirectory.dir("conscrypt-extracted/classes.jar")) {
         builtBy(extractConscryptAar)
     })
+    
+    // Test dependencies
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 application {
@@ -68,5 +72,9 @@ tasks {
         }
         
         dependsOn(extractConscryptAar)
+    }
+    
+    named<Test>("test") {
+        useJUnitPlatform()
     }
 }
