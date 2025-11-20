@@ -12,7 +12,6 @@ dependencies {
     implementation(libs.apksig)
     implementation(libs.bcprov)
     implementation(libs.bcpkix)
-    implementation(libs.conscrypt)
 }
 
 application {
