@@ -31,10 +31,12 @@ import java.nio.file.Paths;
 public class ConscryptNativeLoader {
     
     private static boolean loaded = false;
+    private static String libraryDirectory = null;
     
     /**
      * Attempts to load the Conscrypt native library for the current platform.
      * The library is extracted from the JAR to a temporary location and loaded from there.
+     * Also adds the library directory to java.library.path so Conscrypt can find it.
      * 
      * @return true if the library was successfully loaded, false otherwise
      */
@@ -133,6 +135,11 @@ public class ConscryptNativeLoader {
                 libraryStream.close();
             }
             
+            // Add the library directory to java.library.path BEFORE loading
+            // This ensures Conscrypt can find the library when it initializes
+            addLibraryPath(tempDir.getAbsolutePath());
+            libraryDirectory = tempDir.getAbsolutePath();
+            
             // Load the library
             System.load(tempLibrary.getAbsolutePath());
             
@@ -148,6 +155,42 @@ public class ConscryptNativeLoader {
             System.err.println("Warning: Failed to load Conscrypt native library: " + e.getMessage());
             System.err.println("Conscrypt will not be available. Using default Java crypto providers.");
             return false;
+        }
+    }
+    
+    /**
+     * Adds a directory to the java.library.path at runtime.
+     * This is needed so that Conscrypt can find the native library when it
+     * tries to load it internally using System.loadLibrary().
+     * 
+     * @param pathToAdd The directory path to add to java.library.path
+     */
+    private static void addLibraryPath(String pathToAdd) {
+        try {
+            // Get the current java.library.path
+            String currentPath = System.getProperty("java.library.path");
+            
+            // Check if the path is already included
+            if (currentPath != null && currentPath.contains(pathToAdd)) {
+                return;
+            }
+            
+            // Add the new path
+            String newPath = (currentPath == null || currentPath.isEmpty()) 
+                ? pathToAdd 
+                : currentPath + File.pathSeparator + pathToAdd;
+            
+            System.setProperty("java.library.path", newPath);
+            
+            // Reset the sys_paths field in ClassLoader to null
+            // This forces Java to re-read java.library.path on the next load
+            final java.lang.reflect.Field sysPathsField = 
+                ClassLoader.class.getDeclaredField("sys_paths");
+            sysPathsField.setAccessible(true);
+            sysPathsField.set(null, null);
+            
+        } catch (Exception e) {
+            System.err.println("Warning: Could not add library path: " + e.getMessage());
         }
     }
 }

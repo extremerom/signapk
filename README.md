@@ -16,9 +16,12 @@ The project uses a hybrid approach for Conscrypt dependencies to support both st
 
 The `ConscryptNativeLoader` class automatically:
 1. Detects the current platform (OS and architecture)
-2. Extracts the appropriate native library from the JAR
-3. Loads the library from a temporary location (tries `~/.conscrypt-native` first for Termux compatibility)
-4. Falls back gracefully to Bouncy Castle and default Java crypto providers if loading fails
+2. Extracts the appropriate native library from the JAR to `~/.conscrypt-native` (or fallback locations)
+3. Adds the library directory to `java.library.path` so Conscrypt can find it
+4. Loads the library using `System.load()` with the absolute path
+5. Falls back gracefully to Bouncy Castle and default Java crypto providers if loading fails
+
+**Note**: The library directory is added to `java.library.path` before loading to ensure Conscrypt can locate the native library when it initializes its internal components.
 
 ### Supported Platforms
 
