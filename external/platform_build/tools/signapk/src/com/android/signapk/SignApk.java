@@ -1071,12 +1071,98 @@ class SignApk {
         System.exit(2);
     }
 
+    /**
+     * Configures the Java temporary directory to be compatible with Termux and other
+     * restricted environments where /tmp might not be writable.
+     * 
+     * This method checks for TMPDIR environment variable (common in Termux) and
+     * falls back to $HOME/tmp if needed.
+     */
+    private static void configureTermuxTempDirectory() {
+        String currentTmpDir = System.getProperty("java.io.tmpdir");
+        
+        // Check if we're likely in Termux (check for TERMUX_VERSION or PREFIX env var)
+        String termuxVersion = System.getenv("TERMUX_VERSION");
+        String termuxPrefix = System.getenv("PREFIX");
+        boolean isTermux = (termuxVersion != null) || 
+                          (termuxPrefix != null && termuxPrefix.contains("com.termux"));
+        
+        // In Termux or if current tmpdir is not writable, try to use a better location
+        File tmpDir = new File(currentTmpDir);
+        boolean needsAlternative = false;
+        
+        if (!tmpDir.exists() || !tmpDir.canWrite()) {
+            needsAlternative = true;
+        } else if (isTermux && currentTmpDir.equals("/tmp")) {
+            // In Termux, prefer $HOME/tmp over /tmp even if /tmp exists
+            needsAlternative = true;
+        }
+        
+        if (needsAlternative) {
+            // Try TMPDIR environment variable first (Termux sets this)
+            String tmpDirEnv = System.getenv("TMPDIR");
+            if (tmpDirEnv != null && !tmpDirEnv.isEmpty()) {
+                File envTmpDir = new File(tmpDirEnv);
+                if (envTmpDir.exists() && envTmpDir.canWrite()) {
+                    System.setProperty("java.io.tmpdir", tmpDirEnv);
+                    return;
+                }
+            }
+            
+            // Fall back to $HOME/tmp
+            String userHome = System.getProperty("user.home");
+            if (userHome != null) {
+                File homeTmpDir = new File(userHome, "tmp");
+                
+                // Create the directory if it doesn't exist
+                if (!homeTmpDir.exists()) {
+                    homeTmpDir.mkdirs();
+                }
+                
+                if (homeTmpDir.exists() && homeTmpDir.canWrite()) {
+                    System.setProperty("java.io.tmpdir", homeTmpDir.getAbsolutePath());
+                    if (isTermux) {
+                        System.out.println("Configured temp directory for Termux: " + 
+                                         homeTmpDir.getAbsolutePath());
+                    }
+                    return;
+                }
+            }
+            
+            // Last resort: try current directory
+            File currentDirTmp = new File(".", "tmp");
+            if (!currentDirTmp.exists()) {
+                currentDirTmp.mkdirs();
+            }
+            if (currentDirTmp.exists() && currentDirTmp.canWrite()) {
+                try {
+                    System.setProperty("java.io.tmpdir", currentDirTmp.getCanonicalPath());
+                } catch (IOException e) {
+                    System.setProperty("java.io.tmpdir", currentDirTmp.getAbsolutePath());
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) {
         if (args.length < 4) usage();
 
+        // Configure Java temp directory for Termux compatibility
+        // In Termux, /tmp might not be writable, so use $HOME/tmp or $TMPDIR
+        configureTermuxTempDirectory();
+
+        // Load Conscrypt native library for the current platform (ARM64, x86_64, etc.)
+        // This is needed when using conscrypt-android in non-Android environments
+        ConscryptNativeLoader.loadNativeLibrary();
+        
         // Install Conscrypt as the highest-priority provider. Its crypto primitives are faster than
         // the standard or Bouncy Castle ones.
-        Security.insertProviderAt(new OpenSSLProvider(), 1);
+        try {
+            Security.insertProviderAt(new OpenSSLProvider(), 1);
+        } catch (UnsatisfiedLinkError e) {
+            System.err.println("Warning: Could not initialize Conscrypt provider: " + e.getMessage());
+            System.err.println("Falling back to default Java crypto providers and Bouncy Castle.");
+        }
         // Install Bouncy Castle (as the lowest-priority provider) because Conscrypt does not offer
         // DSA which may still be needed.
         // TODO: Stop installing Bouncy Castle provider once DSA is no longer needed.
@@ -1248,9 +1334,13 @@ class SignApk {
                     try {
                         minSdkVersion = getMinSdkVersion(inputJar);
                     } catch (MinSdkVersionException e) {
-                        throw new IllegalArgumentException(
-                                "Cannot detect minSdkVersion. Use --min-sdk-version to override",
-                                e);
+                        // If we can't detect minSdkVersion (e.g., signing a JAR file instead of an APK),
+                        // default to a reasonable value that supports modern signature schemes.
+                        // Android 7.0 (API 24) introduced APK Signature Scheme v2.
+                        minSdkVersion = 24;
+                        System.err.println("Warning: Cannot detect minSdkVersion from input file: " + e.getMessage());
+                        System.err.println("Defaulting to minSdkVersion=" + minSdkVersion + 
+                                         ". Use --min-sdk-version to override if needed.");
                     }
                 }
 
