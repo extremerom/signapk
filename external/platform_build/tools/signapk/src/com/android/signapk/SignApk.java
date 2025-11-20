@@ -1076,7 +1076,13 @@ class SignApk {
 
         // Install Conscrypt as the highest-priority provider. Its crypto primitives are faster than
         // the standard or Bouncy Castle ones.
-        Security.insertProviderAt(new OpenSSLProvider(), 1);
+        try {
+            Security.insertProviderAt(new OpenSSLProvider(), 1);
+        } catch (UnsatisfiedLinkError e) {
+            // Conscrypt native library not available on this platform (e.g., Termux on aarch64).
+            // Continue with BouncyCastle as the primary provider.
+            System.err.println("Warning: Conscrypt not available, using BouncyCastle: " + e.getMessage());
+        }
         // Install Bouncy Castle (as the lowest-priority provider) because Conscrypt does not offer
         // DSA which may still be needed.
         // TODO: Stop installing Bouncy Castle provider once DSA is no longer needed.
