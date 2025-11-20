@@ -1074,9 +1074,18 @@ class SignApk {
     public static void main(String[] args) {
         if (args.length < 4) usage();
 
+        // Load Conscrypt native library for the current platform (ARM64, x86_64, etc.)
+        // This is needed when using conscrypt-android in non-Android environments
+        ConscryptNativeLoader.loadNativeLibrary();
+        
         // Install Conscrypt as the highest-priority provider. Its crypto primitives are faster than
         // the standard or Bouncy Castle ones.
-        Security.insertProviderAt(new OpenSSLProvider(), 1);
+        try {
+            Security.insertProviderAt(new OpenSSLProvider(), 1);
+        } catch (UnsatisfiedLinkError e) {
+            System.err.println("Warning: Could not initialize Conscrypt provider: " + e.getMessage());
+            System.err.println("Falling back to default Java crypto providers and Bouncy Castle.");
+        }
         // Install Bouncy Castle (as the lowest-priority provider) because Conscrypt does not offer
         // DSA which may still be needed.
         // TODO: Stop installing Bouncy Castle provider once DSA is no longer needed.

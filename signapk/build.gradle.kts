@@ -45,15 +45,20 @@ dependencies {
     implementation(libs.bcprov)
     implementation(libs.bcpkix)
     
-    // Add conscrypt-android to the custom configuration
-    "conscryptAar"(libs.conscrypt)
+    // Use conscrypt-openjdk-uber for compilation (has all the classes)
+    compileOnly(libs.conscrypt.openjdk.uber)
     
-    // Add extracted classes.jar as implementation dependency
-    implementation(files(layout.buildDirectory.dir("conscrypt-extracted/classes.jar")) {
+    // Use conscrypt-android for runtime to get ARM64/AArch64 support
+    // Add to custom configuration for AAR extraction
+    "conscryptAar"(libs.conscrypt.android)
+    
+    // Add extracted classes.jar as runtime dependency
+    runtimeOnly(files(layout.buildDirectory.dir("conscrypt-extracted/classes.jar")) {
         builtBy(extractConscryptAar)
     })
     
-    // Test dependencies
+    // Test dependencies - use openjdk-uber for tests since it works in JVM
+    testImplementation(libs.conscrypt.openjdk.uber)
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
