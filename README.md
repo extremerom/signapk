@@ -67,6 +67,8 @@ java -jar signapk-all.jar --min-sdk-version 21 publickey.x509.pem privatekey.pk8
 
 ## Notes for Termux on ARM64
 
+**TL;DR**: signapk automatically configures itself for Termux. For other Java tools (like apktool), see [TERMUX_GUIDE.md](TERMUX_GUIDE.md).
+
 When running in Termux on ARM64 devices:
 
 1. **Automatic Termux Detection**: The tool automatically detects when running in Termux and configures appropriate directories
@@ -92,6 +94,22 @@ When running in Termux on ARM64 devices:
    This is normal and expected - the signing will proceed successfully.
 
 6. **Performance**: Even if Conscrypt native library fails to load, Bouncy Castle provides all necessary cryptographic operations. The application will work correctly, just potentially slightly slower.
+
+### Using with apktool in Termux
+
+If you're using apktool (or other Java tools) before signapk, they may also need temp directory configuration. See the complete [Termux Usage Guide](TERMUX_GUIDE.md) for details.
+
+Quick fix for apktool in Termux:
+```bash
+mkdir -p $HOME/tmp
+export TMPDIR=$HOME/tmp
+export _JAVA_OPTIONS="-Djava.io.tmpdir=$HOME/tmp"
+
+# Now run apktool and signapk
+java -jar apktool.jar d app.apk
+java -jar apktool.jar b app_decompiled -o modified.apk
+java -jar signapk-all.jar testkey.x509.pem testkey.pk8 modified.apk signed.apk
+```
 
 ## Testing
 
