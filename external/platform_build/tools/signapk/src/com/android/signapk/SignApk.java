@@ -1257,9 +1257,13 @@ class SignApk {
                     try {
                         minSdkVersion = getMinSdkVersion(inputJar);
                     } catch (MinSdkVersionException e) {
-                        throw new IllegalArgumentException(
-                                "Cannot detect minSdkVersion. Use --min-sdk-version to override",
-                                e);
+                        // If we can't detect minSdkVersion (e.g., signing a JAR file instead of an APK),
+                        // default to a reasonable value that supports modern signature schemes.
+                        // Android 7.0 (API 24) introduced APK Signature Scheme v2.
+                        minSdkVersion = 24;
+                        System.err.println("Warning: Cannot detect minSdkVersion from input file: " + e.getMessage());
+                        System.err.println("Defaulting to minSdkVersion=" + minSdkVersion + 
+                                         ". Use --min-sdk-version to override if needed.");
                     }
                 }
 

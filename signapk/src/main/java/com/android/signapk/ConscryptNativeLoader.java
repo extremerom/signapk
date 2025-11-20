@@ -21,6 +21,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * Helper class to load Conscrypt native libraries for ARM64/AArch64 and other platforms.
@@ -80,27 +82,56 @@ public class ConscryptNativeLoader {
                 return false;
             }
             
-            // Create a temporary file for the library
-            File tempDir = Files.createTempDirectory("conscrypt-native").toFile();
-            tempDir.deleteOnExit();
+            // Try to create a temporary directory for the library
+            // First try user's home directory, then fall back to system temp
+            File tempDir = null;
+            Path tempPath = null;
             
-            File tempLibrary = new File(tempDir, libraryName);
-            tempLibrary.deleteOnExit();
-            
-            // Extract the library to the temporary file
-            try (FileOutputStream out = new FileOutputStream(tempLibrary)) {
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = libraryStream.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
+            // Try ~/.conscrypt-native first (better for Termux)
+            String userHome = System.getProperty("user.home");
+            if (userHome != null) {
+                File userTempDir = new File(userHome, ".conscrypt-native");
+                if (userTempDir.exists() || userTempDir.mkdirs()) {
+                    tempDir = userTempDir;
                 }
-            } finally {
-                libraryStream.close();
             }
             
-            // Make the library executable (important on Unix-like systems)
-            tempLibrary.setExecutable(true);
-            tempLibrary.setReadable(true);
+            // Fall back to system temp directory
+            if (tempDir == null) {
+                try {
+                    tempPath = Files.createTempDirectory("conscrypt-native");
+                    tempDir = tempPath.toFile();
+                    tempDir.deleteOnExit();
+                } catch (IOException e) {
+                    // Last resort: try current directory
+                    tempDir = new File(".conscrypt-native");
+                    if (!tempDir.exists() && !tempDir.mkdirs()) {
+                        throw new IOException("Cannot create temporary directory for native library");
+                    }
+                }
+            }
+            
+            File tempLibrary = new File(tempDir, libraryName);
+            
+            // Only extract if file doesn't exist or is empty
+            if (!tempLibrary.exists() || tempLibrary.length() == 0) {
+                // Extract the library to the temporary file
+                try (FileOutputStream out = new FileOutputStream(tempLibrary)) {
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = libraryStream.read(buffer)) != -1) {
+                        out.write(buffer, 0, bytesRead);
+                    }
+                } finally {
+                    libraryStream.close();
+                }
+                
+                // Make the library executable (important on Unix-like systems)
+                tempLibrary.setExecutable(true);
+                tempLibrary.setReadable(true);
+            } else {
+                libraryStream.close();
+            }
             
             // Load the library
             System.load(tempLibrary.getAbsolutePath());
